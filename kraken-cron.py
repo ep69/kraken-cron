@@ -1,51 +1,146 @@
 #!/usr/bin/env python3
 
-# Buy BTC for EUR on kraken.com
+# Buy coins on kraken.com
 
 import sys
+import argparse
+import logging
 import requests
 import json
 import krakenex
 
-INVEST_EUR = 1 # TODO
-BTC_MIN = 0.002 # minimum amount of BTC to buy
+logging.basicConfig()
+log = logging.getLogger("kraken-cron")
+log.setLevel(logging.INFO)
+
+dryrun = False
 
 k = krakenex.API()
-k.load_key('kc.key')
 
-def get_price():
-    url = "https://api.kraken.com/0/public/Ticker?pair=XBTEUR"
+CK = {
+    "eur": "ZEUR",
+    "usd": "ZUSD",
+    "btc": "XXBT",
+    "ltc": "XLTC",
+    "xmr": "XXMR",
+    "bch": "BCH",
+}
+
+
+def CURRENCY(c):
+    return CK.get(c.lower(), None)
+
+
+# https://support.kraken.com/hc/en-us/articles/205893708-Minimum-order-size-volume-for-trading
+M = {  # minimum amounts to buy
+    "XXBTZEUR": 0.002,
+    "XXMRZEUR": 0.1,
+    "XLTCZEUR": 0.1,
+}
+
+
+def MIN(buy, sell):
+    pair = f"{CURRENCY(buy)}{CURRENCY(sell)}"
+    return M.get(pair, None)
+
+
+def get_price(buy, sell):
+    log.debug(f"Getting price {buy}-{sell}")
+    pair = f"{CURRENCY(buy)}{CURRENCY(sell)}"
+    url = f"https://api.kraken.com/0/public/Ticker?pair={pair}"
     response = requests.get(url)
     data = json.loads(response.text)
-    print(f"Retuned data: {data}")
-    for k in data:
-        print(f"Key '{k}' value '{data[k]}'")
-    return data["result"]["XXBTZEUR"]["c"][0]
+    log.debug(f"Retuned data: {data}")
+    return float(data["result"][pair]["c"][0])
 
 
-def get_ballance_eur():
+def get_balance(currency):
+    log.debug("Getting balance")
     data = k.query_private('Balance')
-    print(f"Retuned data: {data}")
-    eur = float(data['result']['ZEUR'])
-    print(f"Balance {eur} eur")
-    return eur
+    log.debug(f"Retuned: {data}")
+    # kraken currency symbol
+    kcs = CURRENCY(currency)
+    bal = float(data["result"].get(kcs, 0))
+    log.debug(f"Balance {bal} {currency} ({kcs})")
+    return bal
 
 
-def buy_btc(amount):
-    #amount = 0.001 # TODO
-    print(f"Want to buy {amount} btc")
-    data  = k.query_private('AddOrder', {'pair':'XXBTZEUR', 'type':'buy', 'ordertype':'market', 'leverage':'none', 'volume':str(amount)})
-    print(f"Retuned data: {data}")
+def buy(buy_currency, amount, sell_currency):
+    log.debug(f"Buying {amount} {buy_currency}")
+    pair = f"{CURRENCY(buy_currency)}{CURRENCY(sell_currency)}"
+    data = {
+        'pair': pair,
+        'type': 'buy',
+        'ordertype': 'market',
+        'leverage': 'none',
+        'volume': str(amount),
+    }
+    if dryrun:
+        log.debug("Dryrun, just validate the transaction")
+        data['validate'] = True
+    log.debug(f"Request: AddOrder {data}")
+    reply = k.query_private('AddOrder', data)
+    log.debug(f"Retuned: {reply}")
 
 
-price = float(get_price())
-print(f"Price: {price}")
-btc = max(INVEST_EUR / price, BTC_MIN)
-print(f"Invest {INVEST_EUR} eur => buy {btc} btc")
+def main():
+    ap = argparse.ArgumentParser(description="Buy coins through Kraken API")
+    ap.add_argument("-k", "--key", default="api.key",
+                    help="API key filename (default: api.key)")
+    ap.add_argument("-d", "--dry-run", action="store_true",
+                    help="dry run - do not buy anything")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="verbose - print debug messages")
+    ap.add_argument("-a", "--amount", type=float, default=0.0,
+                    help="amount to spend (default: minimum)")
+    ap.add_argument("-b", "--buy", default="BTC",
+                    help="currency to buy (default: BTC)")
+    ap.add_argument("-s", "--sell", default="EUR",
+                    help="currency to sell (default: EUR)")
+    args = ap.parse_args()
 
-eur = get_ballance_eur()
-if eur < 2*INVEST_EUR:
-    print("Error - no enough EUR")
-    sys.exit(1)
+    # load key
+    k.load_key(args.key)
 
-buy_btc(btc)
+    global dryrun
+    dryrun = args.dry_run
+
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
+
+    buy_currency = args.buy
+    if not CURRENCY(buy_currency):
+        log.error(f"Unknown currency to buy: '{buy_currency}'")
+    sell_currency = args.sell
+    if not CURRENCY(sell_currency):
+        log.error(f"Unknown currency to sell: '{sell_currency}'")
+
+    price = get_price(buy_currency, sell_currency)
+    eur = get_balance(sell_currency)
+
+    if args.amount == 0.0:
+        minimum = MIN(buy_currency, sell_currency)
+        if not minimum:
+            log.error(f"Unknown minimum for {buy_currency}-{sell_currency}, "
+                      f"specify amount explicitly")
+            sys.exit(1)
+        amount = minimum
+        cost = amount * price
+    else:
+        amount = args.amount / price
+        cost = args.amount
+    log.info(f"Buy {amount} {buy_currency} for {cost} {sell_currency}; "
+             f"price {price} {sell_currency}/{buy_currency}; "
+             f"balance {eur} {sell_currency}")
+
+    if 1.1 * cost > eur:
+        log.error(f"Error - no enough {sell_currency} (keeping 10% buffer)")
+        return 1
+
+    buy(buy_currency, amount, sell_currency)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
