@@ -2,6 +2,7 @@
 Buy crypto coins on kraken.com via API
 
 ## How to use
+1. Review the code of `kraken-cron.py`. It will be touching your money and other assets. Author does not want to do you any harm, but people make mistakes. Really make sure you know what you are running.
 1. Make sure you have python3 installed.
 1. Install python module `krakenex`, e.g.:
 
@@ -37,7 +38,8 @@ Let's say you want to run `kraken-cron.py` as a regular user in cron.
         python3 kraken-cron.py --dry-run --verbose
         deactivate
         exit
-1. Let's say you want to buy every day at 9 AM. Edit your user crontab (`crontab -e`) and add the line:
+1. Use `buy6.sh.template` to create your own buying script, adapt the line executing `kraken-cron.py`. Save the resulting file as `buy6.sh`.
+1. Let's say you want to execute the buying script every day at 9 AM. Edit your user crontab (`crontab -e`) and add the line:
 
         0 9 * * * $HOME/kraken-cron/buy6.sh >>$HOME/kraken-cron/kc.log 2>&1
 1. Check the log (`$HOME/kraken-cron/kc.log`) to see everything is fine. If so, remove the `--dry-run` argument from the appropriate line in `buy6.sh`.
