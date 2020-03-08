@@ -102,6 +102,7 @@ def main():
 
     if args.verbose:
         log.setLevel(logging.DEBUG)
+    log.debug(f"Args: {args}")
 
     global dryrun
     dryrun = args.dry_run
@@ -121,6 +122,7 @@ def main():
     eur = get_balance(sell_currency)
 
     if args.amount == 0.0:
+        log.debug("Default amount")
         minimum = MIN(buy_currency, sell_currency)
         if not minimum:
             log.error(f"Unknown minimum for {buy_currency}-{sell_currency}, "
@@ -129,6 +131,7 @@ def main():
         amount = minimum
         cost = amount * price
     else:
+        log.debug(f"Specific amount - {args.amount}")
         amount = args.amount / price
         cost = args.amount
     log.info(f"Buy {amount} {buy_currency} for {cost} {sell_currency}; "
