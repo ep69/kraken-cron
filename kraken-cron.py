@@ -85,8 +85,9 @@ def buy(buy_currency, amount, sell_currency):
 
 def main():
     ap = argparse.ArgumentParser(description="Buy coins through Kraken API")
-    ap.add_argument("-k", "--key", default="api.key",
-                    help="API key filename (default: api.key)")
+    ap.add_argument("-k", "--key", default=f"{sys.path[0]}/api.key",
+                    help="API key filename "
+                         "(default: api.key in script directory)")
     ap.add_argument("-d", "--dry-run", action="store_true",
                     help="dry run - do not buy anything")
     ap.add_argument("-v", "--verbose", action="store_true",
@@ -99,14 +100,15 @@ def main():
                     help="currency to sell (default: EUR)")
     args = ap.parse_args()
 
-    # load key
-    k.load_key(args.key)
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
 
     global dryrun
     dryrun = args.dry_run
 
-    if args.verbose:
-        log.setLevel(logging.DEBUG)
+    log.debug(f"Key: {args.key}")
+    # load key
+    k.load_key(args.key)
 
     buy_currency = args.buy
     if not CURRENCY(buy_currency):
