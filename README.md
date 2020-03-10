@@ -4,7 +4,7 @@ Buy crypto coins on kraken.com via API
 ## How to use
 1. Review the code of `kraken-cron.py`. It will be touching your money and other assets. Author does not want to do you any harm, but people make mistakes. Really make sure you know what you are running.
 1. Make sure you have python3 installed.
-1. Install python module `krakenex`, e.g.:
+1. Install necessary python modules, `requests` and `krakenex` should be enough for most installations. Example of installing in user home:
 
         pip install --user requests krakenex
 1. Download `kraken-cron.py` script or clone this whole repo:
