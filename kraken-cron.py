@@ -33,7 +33,7 @@ def CURRENCY(c):
 
 # https://support.kraken.com/hc/en-us/articles/205893708-Minimum-order-size-volume-for-trading
 M = {  # minimum amounts to buy
-    "XXBTZEUR": 0.002,
+    "XXBTZEUR": 0.001,
     "XXMRZEUR": 0.1,
     "XLTCZEUR": 0.1,
 }
