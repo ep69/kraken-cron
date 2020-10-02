@@ -94,6 +94,8 @@ def main():
                     help="verbose - print debug messages")
     ap.add_argument("-a", "--amount", type=float, default=0.0,
                     help="amount to spend (default: minimum)")
+    ap.add_argument("-t", "--amount-type", default="sell",
+                    help="amount type - buy / sell (default: sell)")
     ap.add_argument("-b", "--buy", default="BTC",
                     help="currency to buy (default: BTC)")
     ap.add_argument("-s", "--sell", default="EUR",
@@ -121,6 +123,10 @@ def main():
     price = get_price(buy_currency, sell_currency)
     balance = get_balance(sell_currency)
 
+    amount_type = args.amount_type
+    if amount_type not in ["sell", "buy"]:
+        log.error(f"Amount type error: {amount_type}")
+        sys.exit(1)
     if args.amount == 0.0:
         log.debug("Default amount")
         minimum = MIN(buy_currency, sell_currency)
@@ -128,21 +134,39 @@ def main():
             log.error(f"Unknown minimum for {buy_currency}-{sell_currency}, "
                       f"specify amount explicitly")
             sys.exit(1)
-        amount = minimum
-        cost = amount * price
+        buy_amount = minimum
+        sell_amount = buy_amount * price
     else:
-        log.debug(f"Specific amount - {args.amount}")
-        amount = args.amount / price
-        cost = args.amount
-    log.info(f"Buy {amount} {buy_currency} for {cost} {sell_currency}; "
+        if amount_type == "sell":
+            log.debug(f"Specific amount to spend: "
+                      f"{args.amount} {sell_currency}")
+            buy_amount = args.amount / price
+            sell_amount = args.amount
+        elif amount_type == "buy":
+            log.debug(f"Specific amount to buy: "
+                      f"{args.amount} {buy_currency}")
+            buy_amount = args.amount
+            sell_amount = args.amount * price
+        else:
+            assert(False)
+
+    log.info(f"Buy {buy_amount} {buy_currency} "
+             f"for {sell_amount} {sell_currency}; "
              f"price {price} {sell_currency}/{buy_currency}; "
              f"balance {balance} {sell_currency}")
 
-    if 1.1 * cost > balance:
-        log.error(f"Error - no enough {sell_currency} (keeping 10% buffer)")
+    if buy_amount < MIN(buy_currency, sell_currency):
+        log.error(f"Planning to buy {buy_amount} {buy_currency} "
+                  f"for {sell_amount} {sell_currency}, "
+                  f"MINIMUM is "
+                  f"{MIN(buy_currency, sell_currency)} {buy_currency}")
+        sys.exit(1)
+
+    if 1.1 * sell_amount > balance:
+        log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
         return 1
 
-    buy(buy_currency, amount, sell_currency)
+    buy(buy_currency, buy_amount, sell_currency)
 
     return 0
 
