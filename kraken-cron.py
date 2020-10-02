@@ -119,7 +119,7 @@ def main():
         log.error(f"Unknown currency to sell: '{sell_currency}'")
 
     price = get_price(buy_currency, sell_currency)
-    eur = get_balance(sell_currency)
+    balance = get_balance(sell_currency)
 
     if args.amount == 0.0:
         log.debug("Default amount")
@@ -136,9 +136,9 @@ def main():
         cost = args.amount
     log.info(f"Buy {amount} {buy_currency} for {cost} {sell_currency}; "
              f"price {price} {sell_currency}/{buy_currency}; "
-             f"balance {eur} {sell_currency}")
+             f"balance {balance} {sell_currency}")
 
-    if 1.1 * cost > eur:
+    if 1.1 * cost > balance:
         log.error(f"Error - no enough {sell_currency} (keeping 10% buffer)")
         return 1
 
