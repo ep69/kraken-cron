@@ -24,6 +24,7 @@ CK = {
     "ltc": "XLTC",
     "xmr": "XXMR",
     "bch": "BCH",
+    "eth": "XETH",
 }
 
 
@@ -36,17 +37,32 @@ M = {  # minimum amounts to buy
     "XXBTZEUR": 0.001,
     "XXMRZEUR": 0.1,
     "XLTCZEUR": 0.1,
+    "BCHEUR": 0.025,
+    "XETHZEUR": 0.02,
 }
 
 
+def PAIR(buy, sell):
+    b = CURRENCY(buy)
+    s = CURRENCY(sell)
+    assert(len(b) >= 3)
+    assert(len(b) <= 4)
+    assert(len(s) >= 3)
+    assert(len(s) <= 4)
+    if len(b) == 3 or len(s) == 3:
+        b = b[-3:]
+        s = s[-3:]
+    return f"{b}{s}"
+
+
 def MIN(buy, sell):
-    pair = f"{CURRENCY(buy)}{CURRENCY(sell)}"
+    pair = PAIR(buy, sell)
     return M.get(pair, None)
 
 
 def get_price(buy, sell):
     log.debug(f"Getting price {buy}-{sell}")
-    pair = f"{CURRENCY(buy)}{CURRENCY(sell)}"
+    pair = PAIR(buy, sell)
     url = f"https://api.kraken.com/0/public/Ticker?pair={pair}"
     response = requests.get(url)
     data = json.loads(response.text)
@@ -67,7 +83,7 @@ def get_balance(currency):
 
 def buy(buy_currency, amount, sell_currency):
     log.debug(f"Buying {amount} {buy_currency}")
-    pair = f"{CURRENCY(buy_currency)}{CURRENCY(sell_currency)}"
+    pair = PAIR(buy_currency, sell_currency)
     data = {
         'pair': pair,
         'type': 'buy',
@@ -121,7 +137,7 @@ def main():
         log.error(f"Unknown currency to sell: '{sell_currency}'")
 
     price = get_price(buy_currency, sell_currency)
-    balance = get_balance(sell_currency)
+    sell_balance = get_balance(sell_currency)
 
     amount_type = args.amount_type
     if amount_type not in ["sell", "buy"]:
@@ -153,16 +169,16 @@ def main():
     log.info(f"Buy {buy_amount} {buy_currency} "
              f"for {sell_amount} {sell_currency}; "
              f"price {price} {sell_currency}/{buy_currency}; "
-             f"balance {balance} {sell_currency}")
+             f"balance {sell_balance} {sell_currency}")
 
-    if buy_amount < MIN(buy_currency, sell_currency):
+    minimum = MIN(buy_currency, sell_currency)
+    if minimum and buy_amount < minimum:
         log.error(f"Planning to buy {buy_amount} {buy_currency} "
                   f"for {sell_amount} {sell_currency}, "
-                  f"MINIMUM is "
-                  f"{MIN(buy_currency, sell_currency)} {buy_currency}")
+                  f"MINIMUM is {minimum} {buy_currency}")
         sys.exit(1)
 
-    if 1.1 * sell_amount > balance:
+    if 1.1 * sell_amount > sell_balance:
         log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
         return 1
 
