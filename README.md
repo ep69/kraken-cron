@@ -20,7 +20,7 @@ Buy crypto coins on kraken.com via API
 See help:
 ```
 $ ./kraken-cron.py --help
-usage: kraken-cron.py [-h] [-k KEY] [-d] [-v] [-a AMOUNT] [-t AMOUNT_TYPE] [-b BUY] [-s SELL]
+usage: kraken-cron.py [-h] [-k KEY] [-d] [-v] [-a AMOUNT] [-t AMOUNT_TYPE] [-b BUY] [-s SELL] [-c]
 
 Buy coins through Kraken API
 
@@ -35,6 +35,7 @@ optional arguments:
                         amount type - buy / sell (default: sell)
   -b BUY, --buy BUY     currency to buy (default: BTC)
   -s SELL, --sell SELL  currency to sell (default: EUR)
+  -c, --check-balance   check balance before issuing order
 ```
 
 Note that Kraken imposes a minimum limit per coin and `kraken-cron` will buy this minimum by default.

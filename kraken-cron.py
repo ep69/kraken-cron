@@ -116,6 +116,8 @@ def main():
                     help="currency to buy (default: BTC)")
     ap.add_argument("-s", "--sell", default="EUR",
                     help="currency to sell (default: EUR)")
+    ap.add_argument("-c", "--check-balance", action="store_true",
+                    help="check balance before issuing order")
     args = ap.parse_args()
 
     if args.verbose:
@@ -124,6 +126,9 @@ def main():
 
     global dryrun
     dryrun = args.dry_run
+
+    checkbal = args.check_balance
+    log.debug(f"Check balance: {checkbal}")
 
     log.debug(f"Key: {args.key}")
     # load key
@@ -137,7 +142,10 @@ def main():
         log.error(f"Unknown currency to sell: '{sell_currency}'")
 
     price = get_price(buy_currency, sell_currency)
-    sell_balance = get_balance(sell_currency)
+
+    sell_balance = "unknown"
+    if checkbal:
+        sell_balance = get_balance(sell_currency)
 
     amount_type = args.amount_type
     if amount_type not in ["sell", "buy"]:
@@ -178,9 +186,10 @@ def main():
                   f"MINIMUM is {minimum} {buy_currency}")
         sys.exit(1)
 
-    if 1.1 * sell_amount > sell_balance:
-        log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
-        return 1
+    if checkbal:
+        if 1.1 * sell_amount > sell_balance:
+            log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
+            return 1
 
     buy(buy_currency, buy_amount, sell_currency)
 
