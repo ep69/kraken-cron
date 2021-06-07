@@ -9,7 +9,7 @@ import requests
 import json
 import krakenex
 
-logging.basicConfig()
+logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 log = logging.getLogger("kraken-cron")
 log.setLevel(logging.INFO)
 
