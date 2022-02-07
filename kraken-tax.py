@@ -1,72 +1,195 @@
+#!/usr/bin/env python3
+
 import sys
 import argparse
 import logging
-#import requests
-#import json
-#import krakenex
+import datetime
 
 import csv
 from pprint import pformat
 from decimal import Decimal
 from collections import deque
 
-logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
-log = logging.getLogger("kraken-tax")
-log.setLevel(logging.INFO)
-
-dryrun = False
-
-def error(m):
-    print(f"ERROR: {m}")
-    sys.exit(1)
-
-known_crypto = ("XLM", "XBT", "XMR", "BCH", "ETH", "NANO", "LTC", "REPV2", "EOS", "XDG", "XRP", "UNI", "USDT")
-known_fiat = ("EUR", "USD")
-
-def parse_pair(pair):
-    index = 0
-    for c in known_crypto:
-        if pair.startswith(c):
-            base = c
-            index = len(c)
-            break
-        elif pair.startswith(f"X{c}"):
-            base = c
-            index = len(c) + 1
-            break
-    if not index:
-        error(f"parse_pair: cannot parse base of {pair}")
-    rest = pair[index:]
-    found = False
-    for c in known_crypto:
-        if rest.startswith(c) or rest.startswith(f"X{c}"):
-            quote = c
-            found = True
-            break
-    if not found:
-        for f in known_fiat:
-            if rest.startswith(f) or rest.startswith(f"Z{f}"):
-                quote = f
-                found = True
-                break
-    if not found:
-        error(f"parse_pair: cannot parse {pair}")
-
-    return (base, quote)
+import util
+from util import error, warn, info, debug, set_verbose
 
 def ryear(row):
     return int(row['time'][0:4])
 
 def rstring(row):
-    base, quote = parse_pair(row["pair"])
-    return f"{row['time'].split()[0]} {row['type']:<4} {float(row['vol']):>11.4f} {base:<5} for {float(row['cost']):>10.4f} {quote:<5} (price {float(row['price']):>10.4f}, fee {float(row['fee']):>9.6f})"
+    base, quote = util.parse_pair(row["pair"])
+    return f"{row['time'].split()[0]} {row['type']:<4} {float(row['vol']):>11.4f} {base:<5} for {float(row['cost']):>10.4f} {quote:<5} (price {float(row['price']):>10.4f}, fee {float(row['fee']):>9.6f}) ({row['pair']})"
 
 def rprint(row):
-    print(rstring(row))
+    debug(rstring(row))
+
+class TaxMethod:
+    def __init__(self, name, skip_crypto_crypto=False, price_data=None):
+        self.name = name
+        self.cc = not skip_crypto_crypto
+        if not price_data:
+            price_data = util.price_data()
+        self.price_data = price_data
+
+    def handle(self, typ, day, base, quote, vol, cost, fee):
+        if typ not in ("buy", "sell"):
+            error(f"Unknown type: {typ}")
+        pair = util.official_pair(base + quote)
+
+        if util.is_fiat(quote):
+            if typ == "buy":
+                self.buy(day, base, quote, vol, cost, fee)
+            else: # sell
+                self.sell(day, base, quote, vol, cost, fee)
+        elif util.is_crypto(quote) and self.cc:
+            if typ == "buy":
+                # buy for cc means selling quote and buying base
+                pair_quote = quote + self.currency
+                pair_base = base + self.currency
+                price_quote = self.price_data[day][pair_quote]
+                price_base = self.price_data[day][pair_base]
+                vol_sell = cost
+                vol_buy = vol
+                cost_sell = vol_sell * price_quote
+                cost_buy = vol_buy * price_base
+                fee_total = fee * price_quote
+                fee_sell = fee_total / 2
+                fee_buy = fee_total - fee_sell
+                debug(f"FAKE sell: {day} {vol_sell:.2f} {quote} for {cost_sell:.2f} {self.currency} (price {cost_sell/vol_sell:.2f}) fee {fee_sell:.2f} /{pair}")
+                self.sell(day, quote, self.currency, vol_sell, cost_sell, fee_sell, profit_pair=pair)
+                debug(f"FAKE buy: {day} {vol_buy:.2f} {base} for {cost_buy:.2f} {self.currency} (price {cost_buy/vol_buy:.2f}) fee {fee_buy:.2f}")
+                self.buy(day, base, self.currency, vol_buy, cost_buy, fee_buy)
+            else: # sell
+                # sell for cc means selling base and buying quote
+                pair_quote = quote + self.currency
+                pair_base = base + self.currency
+                price_quote = self.price_data[day][pair_quote]
+                price_base = self.price_data[day][pair_base]
+                vol_sell = vol
+                vol_buy = cost
+                cost_sell = vol_sell * price_base
+                cost_buy = vol_buy * price_quote
+                fee_total = fee * price_quote
+                fee_sell = fee_total / 2
+                fee_buy = fee_total - fee_sell
+                debug(f"FAKE sell: {day} {vol_sell:.2f} {base} for {cost_sell:.2f} {self.currency} (price {cost_sell/vol_sell:.2f}) fee {fee_sell:.2f} /{pair}")
+                self.sell(day, base, self.currency, vol_sell, cost_sell, fee_sell, profit_pair=pair)
+                debug(f"FAKE buy: {day} {vol_buy:.2f} {quote} for {cost_buy:.2f} {self.currency} (price {cost_buy/vol_buy:.2f}) fee {fee_buy:.2f}")
+                self.buy(day, quote, self.currency, vol_buy, cost_buy, fee_buy)
+        elif util.is_crypto(quote) and not self.cc:
+            debug(f"{self.name}: skipping CC {base} / {quote}")
+            pass
+        else:
+            error(f"Unknown situation")
+
+    def buy(self, day, base, quote, vol, cost, fee):
+        error("Not implemented (buy)")
+
+    def sell(self, day, base, quote, vol, cost, fee, profit_pair=None):
+        error("Not implemented (sell)")
+
+class WeightedAverage(TaxMethod):
+    def __init__(self, name, skip_crypto_crypto=False, cc_currency = "ZEUR"):
+        super().__init__(name, skip_crypto_crypto=skip_crypto_crypto)
+        self.currency = cc_currency
+        self.data = {}
+
+    def init_pair(self, pair):
+        base, quote = util.official_parse(pair)
+        
+        # for profit pairs, quote != profit currency
+        if util.is_crypto(quote):
+            currency = self.currency
+        else:
+            currency = quote
+
+        self.data[pair] = {
+            "cost": Decimal(0),
+            "amount": Decimal(0),
+            "fees": Decimal(0),
+            "profits": {},
+            "currency": currency,
+        }
+
+    def buy(self, day, base, quote, vol, cost, fee):
+        pair = base + quote
+        if pair not in self.data:
+            self.init_pair(pair)
+
+        self.data[pair]["amount"] += vol
+        self.data[pair]["cost"] += cost
+        self.data[pair]["fees"] += fee
+
+        avg_price = self.data[pair]["cost"] / self.data[pair]["amount"]
+        amount = self.data[pair]["amount"]
+        cost = self.data[pair]["cost"]
+        fees = self.data[pair]["fees"]
+        debug(f"buy cummulative values: {pair} {amount:.2f} {base}, cost {cost:.2f}, avg_price {avg_price:.2f}, fees {fees:.2f}") 
+
+    def sell(self, day, base, quote, vol, cost, fee, profit_pair=None):
+        pair = base + quote
+        if pair not in self.data:
+            self.init_pair(pair)
+
+        if self.data[pair]["amount"] > Decimal(0):
+            amount = self.data[pair]["amount"]
+            if vol > amount:
+                print(f"{pair} vol {vol} amount {amount}")
+                warn(f"Corner case {pair} - we did not buy enough to sell {vol:>6.2f} > {amount:>6.2f}, missing {vol-amount:>11.4f} {util.human_currency(base)}")
+                buy_vol = amount
+            else:
+                buy_vol = vol
+            avg_price = self.data[pair]["cost"] / amount
+            avg_fee = self.data[pair]["fees"] / amount
+            buy_cost = buy_vol * avg_price
+            # TODO is buy-fee included in cost, or extra?
+            buy_fee = buy_vol * avg_fee
+            self.data[pair][f"amount"] -= buy_vol
+            self.data[pair][f"cost"] -= buy_cost
+            self.data[pair][f"fees"] -= buy_fee
+            #print(f"avg_price {avg_price:.2f} avg_fee {avg_fee:.2f}")
+        else: # selling something not owned => no past expenses
+            buy_cost = Decimal(0)
+            buy_fee = Decimal(0)
+
+        profit = cost - buy_cost - buy_fee - fee # sell-fee
+
+        year = int(day[:4])
+        if not profit_pair:
+            profit_pair = pair
+        if profit_pair not in self.data:
+            self.init_pair(profit_pair)
+        if year not in self.data[profit_pair]["profits"]:
+            self.data[profit_pair]["profits"][year] = Decimal(0)
+        self.data[profit_pair]["profits"][year] += profit
+
 
 def main():
-    tax_year = 2021
-    main_currency = "EUR"
+    last_year = int(datetime.datetime.now().date().strftime("%Y")) - 1
+    PROFIT_CURRENCY = "EUR"
+    TAX_CURRENCY = "CZK"
+    TAX_DEFAULT = 15
+
+    ap = argparse.ArgumentParser(description="Compute taxes")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="verbose - print debug messages")
+    ap.add_argument("-y", "--year", default=last_year,
+                    help="tax year, last year by default")
+    ap.add_argument("-c", "--currency", default=PROFIT_CURRENCY,
+                    help=f"fiat currency for crypto-crypto trades, default {PROFIT_CURRENCY}")
+    ap.add_argument("-t", "--tax", default=TAX_DEFAULT,
+                    help=f"tax percents, default {TAX_DEFAULT}")
+    ap.add_argument("-p", "--tax-currency", default=TAX_CURRENCY,
+                    help=f"tax currency, default {TAX_CURRENCY}")
+
+    args = ap.parse_args()
+    
+    if args.verbose:
+        set_verbose()
+
+    tax_year = int(args.year)
+    tax_currency = args.tax_currency
+    tax = Decimal(0.01) * Decimal(args.tax)
 
     infile = "trades.csv"
     if infile:
@@ -75,108 +198,64 @@ def main():
     else: # use stdin
         f = sys.stdin
 
-    
     reader = csv.DictReader(f)
+
+    wa_simple = WeightedAverage("WA-simple", skip_crypto_crypto=True)
+    wa_cc = WeightedAverage("WA-honest", skip_crypto_crypto=False)
+    methods = [wa_simple, wa_cc]
+
     n = 0
-    pairs = set()
-    types = set()
-    costs = set()
-    data = {}
     for row in reader:
         n += 1
         if n == 1: # header
-            print(f"Columns: {', '.join(row.keys())}")
-        pairs |= set((row["pair"],))
-        types |= set((row["type"],))
-        costs |= set((row["cost"],))
+            debug(f"Columns: {', '.join(row.keys())}")
 
-        #rprint(row)
+        debug(rstring(row))
 
-        year = ryear(row)
-        if year > tax_year:
-            # not looking into future
-            #print(f"SKIPPING {rstring(row)}")
-            continue
-
-        pair = row["pair"]
-#        if pair != "XXBTZEUR":
-        if "ETH" not in pair:
-#            #print(f"SKIPPING {rstring(row)}")
-            continue
-
-        if pair not in data:
-            data[pair] = {
-                "buy-cost": Decimal(0),
-                "buy-vol": Decimal(0),
-                "buy-fee": Decimal(0),
-                "sell-cost": Decimal(0),
-                "sell-vol": Decimal(0),
-                "sell-fee": Decimal(0),
-                "wa-cost": Decimal(0),
-                "wa-amount": Decimal(0),
-                "wa-feesum": Decimal(0),
-                "wa-profits": {},
-            }
-        if year not in data[pair]["wa-profits"]:
-            data[pair]["wa-profits"][year] = Decimal(0)
+        pair = util.official_pair(row["pair"])
+        base, quote = util.official_parse(pair)
 
         typ = row["type"]
+        day = row["time"][:10]
         cost = Decimal(row["cost"])
         vol = Decimal(row["vol"])
         fee = Decimal(row["fee"])
 
-        data[pair][f"{typ}-cost"] += cost
-        data[pair][f"{typ}-vol"] += vol
-        data[pair][f"{typ}-fee"] += fee
-
-        if typ == "sell":
-            if data[pair]["wa-amount"] > Decimal(0):
-                if vol > data[pair]["wa-amount"]:
-                    error(f"Special case - we did not buy enough to sell")
-                avg_price = data[pair]["wa-cost"] / data[pair]["wa-amount"]
-                avg_fee = data[pair]["wa-feesum"] / data[pair]["wa-amount"]
-                buy_cost = vol * avg_price
-                # TODO is buy-fee included in cost, or extra?
-                buy_fee = vol * avg_fee
-                data[pair][f"wa-amount"] -= vol
-                data[pair][f"wa-cost"] -= buy_cost
-                data[pair][f"wa-feesum"] -= buy_fee
-                #print(f"avg_price {avg_price:.2f} avg_fee {avg_fee:.2f}")
-            else: # selling something not 
-                buy_cost = Decimal(0)
-                buy_fee = Decimal(0)
-            profit = cost - buy_cost - buy_fee - fee # sell-fee
-            data[pair][f"wa-profits"][year] += profit
-            rprint(row)
-            print(f"profit: {profit:.2f} yprofit {data[pair][f'wa-profits'][year]:.4f} buy_cost {buy_cost:.2f}")
-        elif typ == "buy":
-            #rprint(row)
-            data[pair]["wa-feesum"] += fee
-            data[pair]["wa-cost"] += cost
-            data[pair]["wa-amount"] += vol
-            avg_price = data[pair]["wa-cost"] / data[pair]["wa-amount"]
-            amount = data[pair]["wa-amount"]
-            rprint(row)
-            #print(f"Average price: {avg_price:>16.4f}, amount {amount:>8.4F}")
-        else:
-            error(f"Unknown type: {typ}")
-
+        for m in methods:
+            m.handle(typ, day, base, quote, vol, cost, fee)
 
     if f is not sys.stdin:
         f.close()
 
-    print()
-    print("SUMMARY:")
-    for pair, vals in data.items():
-        print(f"{pair}:")
-        print(f"  WA: cost {vals['wa-cost']:>12.4f} amount {vals['wa-amount']:>12.4f}")
-        for y, p in vals["wa-profits"].items():
-            print(f"    {y} profit {p:.4f} ({pair})")
+    forex_prices = util.forex_data()
 
-    if False:
-        print(f"Pairs:")
-        print(f"Types:")
-        print(f"Costs: {','.join(costs)}")
+    for m in methods:
+        info(f"\n{m.name}:")
+        total = {}
+        for pair, vals in m.data.items():
+            currency = util.human_currency(vals["currency"])
+            if currency not in total:
+                total[currency] = Decimal(0)
+            profit = Decimal(0)
+            if tax_year in vals["profits"]:
+                profit = vals["profits"][tax_year]
+            if profit:
+                base, quote = (util.human_currency(c) for c in util.parse_pair(pair))
+                total[currency] += profit
+                info(f"    {base:<5} / {quote:<5} {tax_year} profit {profit:>12.4f} {currency}")
+        info(f"  PROFITS:")
+        tax_base = Decimal(0)
+        for k, v in total.items():
+            if not v:
+                continue
+            debug(f"k {k} tc {tax_currency}")
+            p = util.human_currency(k) + util.human_currency(tax_currency)
+            tax_sub = forex_prices[tax_year][p] * v
+            tax_base += tax_sub
+            info(f"{tax_sub:>22.2f} {tax_currency} <- {v:>12.4f} {k}")
+        info(f"  TOTAL: {tax_base:>13.2f} {tax_currency}")
+        tax_total = tax_base * tax
+        info(f"  TAX: {tax_total:>15.2f} {tax_currency}")
 
 if __name__ == "__main__":
     sys.exit(main())

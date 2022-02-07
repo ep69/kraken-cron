@@ -2,12 +2,28 @@ import sys
 import csv
 from decimal import Decimal
 
+VERBOSE = False
+
+def set_verbose():
+    global VERBOSE
+    VERBOSE = True
+
+def debug(m):
+    if VERBOSE:
+        print(f"DEBUG: {m}")
+
+def info(m):
+    print(f"{m}")
+
+def warn(m):
+    print(f"WARN: {m}", file=sys.stderr)
+
 def error(m):
-    print(f"ERROR: {m}")
+    print(f"ERROR: {m}", file=sys.stderr)
     sys.exit(1)
 
 known_crypto = ("XLM", "XBT", "XMR", "BCH", "ETH", "NANO", "LTC", "REPV2", "EOS", "XDG", "XRP", "UNI", "USDT")
-known_fiat = ("EUR", "USD")
+known_fiat = ("EUR", "USD", "CZK")
 
 def is_crypto(c):
     return c in known_crypto or c.startswith("X") and c[1:] in known_crypto
@@ -60,17 +76,30 @@ def official_currency(c):
         error(f"official_currency {c} problem")
     return prefix + c
 
+def human_currency(c):
+    prefix = ""
+    if c in known_crypto or c in known_fiat:
+        result = c
+    elif c[0] == "X" and c[1:] in known_crypto:
+        result = c[1:]
+    elif c[0] == "Z" and c[1:] in known_fiat:
+        result = c[1:]
+    else:
+        error(f"human_currency {c} problem")
+    return result
 
 def official_pair(pair):
     base, quote = parse_pair(pair)
     return official_currency(base) + official_currency(quote)
+
+def official_parse(pair):
+    return (official_currency(c) for c in parse_pair(pair))
 
 def price_data():
     data = {}
     with open("data/fiat_pairs.csv", "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            print(row)
             day = row["day"]
             prices = {}
             for k, v in row.items():
@@ -82,3 +111,18 @@ def price_data():
             data[day] = prices
     return data
 
+def forex_data():
+    data = {}
+    with open("data/forex_yearly.csv", "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            year = int(row["year"])
+            prices = {}
+            for k, v in row.items():
+                if k != "year":
+                    if v:
+                        prices[k] = Decimal(v)
+                    else:
+                        prices[k] = None
+            data[year] = prices
+    return data
