@@ -90,7 +90,7 @@ class WeightedAverage(TaxMethod):
 
     def init_pair(self, pair):
         base, quote = util.official_parse(pair)
-        
+
         # for profit pairs, quote != profit currency
         if util.is_crypto(quote):
             currency = self.currency
@@ -198,7 +198,7 @@ def main():
                     help=f"Available filters: {', '.join(f.name for f in FILTERS)}; default is none")
 
     args = ap.parse_args()
-    
+
     if args.verbose:
         set_verbose()
 
@@ -242,11 +242,11 @@ def main():
 
     if infile:
         debug(f"Opening {infile}")
-        f = open(infile, mode="r")
+        fi = open(infile, mode="r")
     else: # use stdin
-        f = sys.stdin
+        fi = sys.stdin
 
-    reader = csv.DictReader(f)
+    reader = csv.DictReader(fi)
 
     n = 0
     for row in reader:
@@ -265,16 +265,21 @@ def main():
         vol = Decimal(row["vol"])
         fee = Decimal(row["fee"])
 
-        for f in filters:
-            if f.match(typ, day, base, quote, vol, cost, fee):
-                debug(f"Skipping: {typ} {day} {base} {quote} {vol} {cost} {fee}")
-                continue
+        skip = False
+        for filt in filters:
+            if filt.match(typ, day, base, quote, vol, cost, fee):
+                debug(f"Filter {filt.name} matched: {typ} {day} {base} {quote} {vol} {cost} {fee}")
+                skip = True
+                break
+        if skip:
+            info(f"Skipping: {typ} {day} {base} {quote} {vol} {cost} {fee}")
+            continue
 
         for m in methods:
             m.handle(typ, day, base, quote, vol, cost, fee)
 
-    if f is not sys.stdin:
-        f.close()
+    if fi is not sys.stdin:
+        fi.close()
 
     forex_prices = util.forex_data()
 
