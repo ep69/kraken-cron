@@ -148,6 +148,7 @@ class WeightedAverage(TaxMethod):
 
         profit = cost - buy_cost - buy_fee - fee # sell-fee
 
+        # TODO this is not good enough, we need both income and cost
         year = int(day[:4])
         if not profit_pair:
             profit_pair = pair
@@ -277,6 +278,7 @@ def main():
 
         for m in methods:
             m.handle(typ, day, base, quote, vol, cost, fee)
+            #debug(f"{m.name}: {pformat(m.data)}")
 
     if fi is not sys.stdin:
         fi.close()
@@ -302,8 +304,9 @@ def main():
         for k, v in total.items():
             if not v:
                 continue
-            debug(f"k {k} tc {tax_currency}")
             p = util.human_currency(k) + util.human_currency(tax_currency)
+            ratio = forex_prices[tax_year][p]
+            debug(f"{k} to {tax_currency} {ratio:>10}")
             tax_sub = forex_prices[tax_year][p] * v
             tax_base += tax_sub
             info(f"{tax_sub:>20.2f} {tax_currency}  <-  {v:>10.2f} {k}")
