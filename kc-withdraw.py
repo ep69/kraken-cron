@@ -19,11 +19,10 @@ dryrun = False
 k = krakenex.API()
 
 CK = {
-    "btc": "XBT",
-    "ltc": "LTC",
-    "xmr": "XMR",
-    "bch": "BCH",
-    "eth": "ETH",
+    "btc": "XXBT",
+    "ltc": "XLTC",
+    "xmr": "XXMR",
+    "eth": "XETH",
 }
 
 
@@ -33,12 +32,16 @@ def CURRENCY(c):
 
 # https://support.kraken.com/hc/en-us/articles/360000767986-Cryptocurrency-withdrawal-fees-and-minimums
 MIN_WITHDRAW = {  # minimum amounts to withdraw
-    "XBT": 0.0005
+    "XXBT": 0.0005
 }
 
 
 def min_withdraw(cur):
-    return MIN_WITHDRAW.get(CURRENCY(cur), None)
+    m = MIN_WITHDRAW.get(CURRENCY(cur), None)
+    if m is None:
+        log.warn(f"Unknown Kraken minimum for {cur}, assuming 0.0")
+        m = 0.0
+    return m
 
 
 def get_balance(currency):
@@ -66,7 +69,7 @@ def withdraw(currency, amount, wallet):
     if dryrun:
         log.debug("Dryrun, just validate the transaction")
         #data['validate'] = True # this does NOT work for Withdraw
-        return "Validation only"
+        return ["Validation only"]
 
     reply = k.query_private('Withdraw', data)
     log.debug(f"Retuned: {reply}")
@@ -122,20 +125,21 @@ def main():
     if minimum or not amount:
         balance = get_balance(currency)
         if not amount:
+            log.debug(f"Withdrawing all {currency}")
             amount = balance
         if minimum:
             min_s = f" if {balance} >= {minimum}"
     log.info(f"Planning to withdraw {amount} {currency}{min_s}")
+    if amount < minimum:
+        log.info(f"Not withdrawing, {amount} < {minimum} "
+                 "(user provided minimum)")
+        return 0
 
-    min_amount = min_withdraw(currency)
-    if amount < min_amount:
-        log.error(f"Amount to withdraw {amount} < {min_amount} {currency} "
+    min_kraken = min_withdraw(currency)
+    if amount < min_kraken:
+        log.error(f"Amount to withdraw {amount} < {min_kraken} {currency} "
                   "(Kraken minimum)")
         return 1
-
-    if minimum and balance < minimum:
-        log.info(f"No withdrawal")
-        return 0
 
     error = withdraw(currency, amount, wallet)
     if error:
