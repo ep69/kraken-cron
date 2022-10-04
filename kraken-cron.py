@@ -98,6 +98,8 @@ def buy(buy_currency, amount, sell_currency):
     reply = k.query_private('AddOrder', data)
     log.debug(f"Retuned: {reply}")
 
+    return reply['error']
+
 
 def main():
     ap = argparse.ArgumentParser(description="Buy coins through Kraken API")
@@ -191,7 +193,11 @@ def main():
             log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
             return 1
 
-    buy(buy_currency, buy_amount, sell_currency)
+    error = buy(buy_currency, buy_amount, sell_currency)
+    if error:
+        for m in error:
+            log.error(f"Buy error: {m}")
+        sys.exit(1)
 
     return 0
 
