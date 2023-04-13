@@ -7,6 +7,7 @@ import argparse
 import logging
 import requests
 import json
+import time
 import krakenex
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -193,11 +194,24 @@ def main():
             log.error(f"Error - not enough {sell_currency} (keeping 10% buffer)")
             return 1
 
-    error = buy(buy_currency, buy_amount, sell_currency)
-    if error:
-        for m in error:
-            log.error(f"Buy error: {m}")
-        sys.exit(1)
+    t = 0
+    MAX_TRIES = 5
+    DELAY = 20
+    while t < MAX_TRIES:
+        log.debug(f"Buy loop: iteration {t}")
+        t += 1
+        error = buy(buy_currency, buy_amount, sell_currency)
+        if len(error) == 1 and error[0] == "EService:Busy":
+            log.debug(f"Buy loop: service busy, waiting {DELAY} seconds")
+            time.sleep(DELAY)
+        elif error:
+            log.debug(f"Buy loop: other error {error}")
+            for m in error:
+                log.error(f"Buy error: {m}")
+            sys.exit(1)
+        else: # success
+            log.debug(f"Buy loop: success")
+            break
 
     return 0
 
