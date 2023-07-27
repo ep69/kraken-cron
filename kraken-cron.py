@@ -67,17 +67,23 @@ def get_price(buy, sell):
     url = f"https://api.kraken.com/0/public/Ticker?pair={pair}"
     response = requests.get(url)
     data = json.loads(response.text)
-    log.debug(f"Retuned data: {data}")
-    return float(data["result"][pair]["c"][0])
+    log.debug(f"Returned data: {data}")
+    result = data.get("result", None)
+    if result is None:
+        return None
+    return float(result[pair]["c"][0])
 
 
 def get_balance(currency):
     log.debug("Getting balance")
     data = k.query_private('Balance')
-    log.debug(f"Retuned: {data}")
+    log.debug(f"Returned: {data}")
+    result = data.get("result", None)
+    if result is None:
+        return None
     # kraken currency symbol
     kcs = CURRENCY(currency)
-    bal = float(data["result"].get(kcs, 0))
+    bal = float(result.get(kcs, 0))
     log.debug(f"Balance {bal} {currency} ({kcs})")
     return bal
 
@@ -97,7 +103,7 @@ def buy(buy_currency, amount, sell_currency):
         data['validate'] = True
     log.debug(f"Request: AddOrder {data}")
     reply = k.query_private('AddOrder', data)
-    log.debug(f"Retuned: {reply}")
+    log.debug(f"Returned: {reply}")
 
     return reply['error']
 

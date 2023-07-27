@@ -47,10 +47,13 @@ def min_withdraw(cur):
 def get_balance(currency):
     log.debug("Getting balance")
     data = k.query_private('Balance')
-    log.debug(f"Retuned: {data}")
+    log.debug(f"Returned: {data}")
+    result = data.get("result", None)
+    if result is None:
+        return result
     # kraken currency symbol
     kcs = CURRENCY(currency)
-    bal = float(data["result"].get(kcs, 0))
+    bal = float(result.get(kcs, 0))
     log.debug(f"Balance {bal} {currency} ({kcs})")
     return bal
 
@@ -72,7 +75,7 @@ def withdraw(currency, amount, wallet):
         return ["Validation only"]
 
     reply = k.query_private('Withdraw', data)
-    log.debug(f"Retuned: {reply}")
+    log.debug(f"Returned: {reply}")
 
     return reply['error']
 
