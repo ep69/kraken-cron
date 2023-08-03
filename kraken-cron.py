@@ -202,13 +202,14 @@ def main():
 
     t = 0
     MAX_TRIES = 5
-    DELAY = 20
+    DELAY = 30
     while t < MAX_TRIES:
         log.debug(f"Buy loop: iteration {t}")
         t += 1
         error = buy(buy_currency, buy_amount, sell_currency)
-        if len(error) == 1 and error[0] == "EService:Busy":
-            log.debug(f"Buy loop: service busy, waiting {DELAY} seconds")
+        recoverable_errors = ("EService:Busy", "EGeneral:Internal error")
+        if len(error) >= 1 and error[0] in recoverable_errors:
+            log.debug(f"Buy loop: recoverable problem, waiting {DELAY} seconds")
             time.sleep(DELAY)
         elif error:
             log.debug(f"Buy loop: other error {error}")
