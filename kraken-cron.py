@@ -202,7 +202,7 @@ def main():
 
     t = 0
     MAX_TRIES = 5
-    DELAY = 30
+    DELAY_INC = 60
     while t < MAX_TRIES:
         log.debug(f"Buy loop: iteration {t}")
         t += 1
@@ -214,8 +214,9 @@ def main():
                 "EDatabase:Internal error",
                 ]
         if len(error) >= 1 and error[0] in recoverable_errors:
-            log.debug(f"Buy loop: recoverable problem, waiting {DELAY} seconds")
-            time.sleep(DELAY)
+            delay = t * DELAY_INC
+            log.debug(f"Buy loop: recoverable error {error}, waiting {delay} seconds")
+            time.sleep(delay)
         elif error:
             log.debug(f"Buy loop: unknown error {error}")
             for m in error:
