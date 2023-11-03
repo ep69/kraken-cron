@@ -207,12 +207,17 @@ def main():
         log.debug(f"Buy loop: iteration {t}")
         t += 1
         error = buy(buy_currency, buy_amount, sell_currency)
-        recoverable_errors = ("EService:Busy", "EGeneral:Internal error")
+        recoverable_errors = [
+                "EService:Busy",
+                "EGeneral:Internal error",
+                "EService:Internal error",
+                "EDatabase:Internal error",
+                ]
         if len(error) >= 1 and error[0] in recoverable_errors:
             log.debug(f"Buy loop: recoverable problem, waiting {DELAY} seconds")
             time.sleep(DELAY)
         elif error:
-            log.debug(f"Buy loop: other error {error}")
+            log.debug(f"Buy loop: unknown error {error}")
             for m in error:
                 log.error(f"Buy error: {m}")
             sys.exit(1)
