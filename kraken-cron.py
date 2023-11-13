@@ -209,6 +209,8 @@ def main():
         error = buy(buy_currency, buy_amount, sell_currency)
         recoverable_errors = [
                 "EService:Busy",
+                "EService:Unavailable",
+                "EService:Market in post_only mode",
                 "EGeneral:Internal error",
                 "EService:Internal error",
                 "EDatabase:Internal error",
