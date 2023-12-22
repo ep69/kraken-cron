@@ -32,7 +32,7 @@ def CURRENCY(c):
 
 # https://support.kraken.com/hc/en-us/articles/360000767986-Cryptocurrency-withdrawal-fees-and-minimums
 MIN_WITHDRAW = {  # minimum amounts to withdraw
-    "XXBT": 0.0005
+    "XXBT": 0.0008
 }
 
 
